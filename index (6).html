@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FishMap Greece — Ο χάρτης του ψαρά</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --sea:    #072e47;
+      --sea2:   #0a3d5c;
+      --wave:   #1591b8;
+      --wave2:  #22b8d4;
+      --foam:   #e2f3f9;
+      --sand:   #f7f3ec;
+      --coral:  #f0603a;
+      --coral2: #ff7a52;
+      --gold:   #d4b155;
+      --text:   #0f1c26;
+      --text2:  #52616b;
+      --border: #d5e2ea;
+      --white:  #ffffff;
+      --radius: 14px;
+      --nav-h:  82px;   /* two-row nav */
+      --shadow-sm: 0 2px 10px rgba(7,46,71,0.08);
+      --shadow-md: 0 8px 28px rgba(7,46,71,0.13);
+      --shadow-lg: 0 16px 48px rgba(7,46,71,0.20);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--sand);
+      overflow-x: hidden;
+    }
+
+    /* ── NAV (two rows) ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--sea);
+      box-shadow: 0 2px 14px rgba(0,0,0,0.25);
+      height: var(--nav-h);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 28px;
+      gap: 0;
+    }
+
+    /* Row 1: logo + search */
+    .nav-row1 {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 6px;
+    }
+
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.25rem;
+      color: #fff;
+      white-space: nowrap;
+      letter-spacing: -0.3px;
+      flex-shrink: 0;
+    }
+    .nav-logo span { color: var(--gold); }
+
+    /* Search */
+    .search-wrap {
+      flex: 1;
+      max-width: 440px;
+      position: relative;
+    }
+    .search-wrap input {
+      width: 100%;
+      height: 36px;
+      padding: 0 14px 0 38px;
+      border-radius: 18px;
+      border: none;
+      background: rgba(255,255,255,0.13);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: background 0.2s;
+    }
+    .search-wrap input::placeholder { color: rgba(255,255,255,0.45); }
+    .search-wrap input:focus { background: rgba(255,255,255,0.2); }
+    .search-icon {
+      position: absolute;
+      left: 12px; top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.85rem;
+      pointer-events: none;
+      opacity: .5;
+    }
+    .search-results {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px); left: 0; right: 0;
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      max-height: 320px;
+      overflow-y: auto;
+      z-index: 2000;
+    }
+    .search-results.open { display: block; }
+    .sr-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 11px 15px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--foam);
+      transition: background 0.13s;
+    }
+    .sr-item:last-child { border-bottom: none; }
+    .sr-item:hover { background: var(--foam); }
+    .sr-emoji { font-size: 1.4rem; flex-shrink: 0; }
+    .sr-name  { font-size: 0.93rem; font-weight: 600; color: var(--sea); line-height: 1.2; }
+    .sr-sub   { font-size: 0.76rem; color: var(--text2); margin-top: 1px; }
+    .sr-badge {
+      margin-left: auto; font-size: 0.68rem; font-weight: 700;
+      padding: 3px 8px; border-radius: 8px;
+      background: var(--foam); color: var(--wave); white-space: nowrap; flex-shrink: 0;
+    }
+    .sr-empty { padding: 18px; text-align: center; font-size: 0.88rem; color: var(--text2); }
+
+    /* Row 2: quick-nav tabs */
+    .nav-row2 {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .nav-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 13px;
+      border-radius: 14px;
+      border: none;
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s, color 0.18s;
+      text-decoration: none;
+      letter-spacing: 0.1px;
+    }
+    .nav-tab:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-tab.active { background: rgba(255,255,255,0.15); color: #fff; }
+
+    /* ── PAGE ── */
+    .page { padding-top: var(--nav-h); }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(155deg, #051f30 0%, var(--sea) 40%, var(--wave) 100%);
+      padding: 74px 32px 92px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    /* animated glow blobs */
+    .hero::before {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      top: -180px; right: -120px;
+      background: radial-gradient(circle, rgba(34,184,212,0.25) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: floatGlow 12s ease-in-out infinite;
+    }
+    .hero-glow2 {
+      position: absolute;
+      width: 400px; height: 400px;
+      bottom: -100px; left: -100px;
+      background: radial-gradient(circle, rgba(212,177,85,0.14) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: floatGlow 15s ease-in-out infinite reverse;
+    }
+    @keyframes floatGlow {
+      0%,100% { transform: translate(0,0) scale(1); }
+      50%     { transform: translate(-30px,20px) scale(1.1); }
+    }
+    /* layered wave bottom */
+    .hero-waves {
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      width: 100%; height: 70px;
+      display: block;
+    }
+    .hero > * { position: relative; z-index: 2; }
+    .hero-waves { z-index: 1; }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--gold);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 22px;
+      backdrop-filter: blur(10px);
+      animation: fadeSlideDown 0.7s ease both;
+    }
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.3rem, 5.5vw, 4rem);
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1.08;
+      max-width: 720px;
+      margin: 0 auto 20px;
+      letter-spacing: -1px;
+      animation: fadeSlideDown 0.7s ease 0.1s both;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(120deg, var(--gold), #f0d98a);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      color: rgba(255,255,255,0.78);
+      font-size: 1.12rem;
+      max-width: 500px;
+      margin: 0 auto 38px;
+      line-height: 1.65;
+      animation: fadeSlideDown 0.7s ease 0.2s both;
+    }
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(120deg, var(--coral), var(--coral2));
+      color: var(--white);
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 15px 34px;
+      border-radius: 50px;
+      text-decoration: none;
+      box-shadow: 0 8px 28px rgba(240,96,58,0.45);
+      transition: transform 0.25s, box-shadow 0.25s;
+      animation: fadeSlideDown 0.7s ease 0.3s both;
+    }
+    .hero-cta:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 14px 36px rgba(240,96,58,0.55); }
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 56px;
+      margin-top: 52px;
+      animation: fadeSlideDown 0.7s ease 0.4s both;
+    }
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1;
+      text-shadow: 0 2px 20px rgba(34,184,212,0.4);
+    }
+    .stat-label {
+      font-size: 0.76rem;
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 6px;
+    }
+
+    /* ── SECTION WRAPPER ── */
+    .section {
+      padding: 60px 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--sea);
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+    .section-sub {
+      font-size: 0.97rem;
+      color: var(--text2);
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    /* ── MAP SECTION ── */
+    #map-section { background: var(--sand); }
+    .map-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 22px;
+      align-items: start;
+    }
+    #map {
+      height: 520px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(10,61,92,0.14);
+    }
+
+    /* ── REGION PANEL ── */
+    .region-panel {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(10,61,92,0.1);
+      overflow: hidden;
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-header {
+      background: var(--sea);
+      padding: 18px 22px;
+      color: var(--white);
+    }
+    .panel-header h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .panel-header p {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.6);
+      margin-top: 3px;
+    }
+    .panel-body {
+      padding: 18px 20px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .panel-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+      color: var(--text2);
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .ph-icon { font-size: 2.8rem; opacity: 0.35; }
+    .panel-placeholder p { font-size: 0.92rem; line-height: 1.6; }
+
+    /* Fish chip in panel */
+    .fish-chip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 9px;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      margin-bottom: 8px;
+      background: var(--sand);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .fish-chip:hover { background: var(--foam); border-color: var(--wave); }
+    .fc-emoji { font-size: 1.65rem; flex-shrink: 0; }
+    .fc-info h4 { font-size: 0.97rem; font-weight: 700; color: var(--sea); line-height: 1.2; }
+    .fc-info span { font-size: 0.77rem; color: var(--text2); font-style: italic; }
+    .fc-badge {
+      margin-left: auto;
+      font-size: 0.69rem; font-weight: 700;
+      padding: 3px 9px; border-radius: 10px;
+      background: var(--foam); color: var(--wave); white-space: nowrap; flex-shrink: 0;
+    }
+
+    /* ── FISH DATABASE SECTION ── */
+    #fish-section { background: var(--foam); max-width: 100%; }
+    #fish-section .section { max-width: 1200px; }
+    .fish-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .fish-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s;
+      border: 1px solid rgba(213,226,234,0.6);
+      position: relative;
+      overflow: hidden;
+    }
+    .fish-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--wave), var(--wave2));
+      transform: scaleX(0);
+      transition: transform 0.25s;
+    }
+    .fish-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-md); border-color: transparent; }
+    .fish-card:hover::before { transform: scaleX(1); }
+    .fish-card-icon { font-size: 2.8rem; margin-bottom: 10px; }
+    .fish-card h4 { font-size: 0.97rem; font-weight: 700; color: var(--sea); margin-bottom: 4px; line-height: 1.2; }
+    .fish-card .latin { font-size: 0.74rem; color: var(--text2); font-style: italic; margin-bottom: 8px; }
+    .fish-card .meta  { font-size: 0.76rem; color: var(--text2); }
+
+    /* Photo loading shimmer */
+    .fish-card img {
+      animation: none;
+      transition: opacity 0.3s;
+    }
+    .fish-card img[src=""] { opacity: 0; }
+    .season-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 2px;
+      vertical-align: middle;
+    }
+    .dot-s { background: #4CAF50; }
+    .dot-k { background: #FF9800; }
+    .dot-f { background: #795548; }
+    .dot-x { background: #2196F3; }
+
+    /* ── METHODS SECTION ── */
+    #methods-section { background: var(--sand); }
+    .methods-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 18px;
+    }
+    .method-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.25s, box-shadow 0.25s;
+      border: 1px solid rgba(213,226,234,0.6);
+    }
+    .method-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+    .mc-head {
+      background: linear-gradient(135deg, var(--sea), var(--wave));
+      padding: 18px 20px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .mc-icon { font-size: 2rem; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.2)); }
+    .mc-head h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem; font-weight: 700; color: var(--white); line-height: 1.2;
+    }
+    .mc-head p { font-size: 0.76rem; color: rgba(255,255,255,0.6); margin-top: 2px; }
+    .mc-body { padding: 15px 18px; }
+    .mc-body p { font-size: 0.88rem; color: var(--text2); line-height: 1.65; margin-bottom: 10px; }
+    .mc-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .mc-tag {
+      font-size: 0.71rem; font-weight: 600;
+      padding: 3px 9px; border-radius: 8px;
+      background: var(--foam); color: var(--wave);
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--sea);
+      color: rgba(255,255,255,0.55);
+      text-align: center;
+      padding: 30px 32px;
+      font-size: 0.84rem;
+      line-height: 1.7;
+    }
+    footer strong { color: var(--white); }
+
+    /* ── MODAL ── */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(10,61,92,0.58);
+      z-index: 3000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--white);
+      border-radius: 16px;
+      max-width: 520px; width: 100%;
+      max-height: 88vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+      animation: slideUp 0.22s ease;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(14px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .modal-top {
+      background: linear-gradient(135deg, var(--sea), #1a6a8a);
+      padding: 28px 24px 22px;
+      position: relative;
+    }
+    .modal-close {
+      position: absolute; top: 14px; right: 14px;
+      background: rgba(255,255,255,0.14); border: none; color: white;
+      width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+      font-size: 1rem; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-fish-icon { font-size: 3rem; margin-bottom: 6px; }
+    .modal-name {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.6rem; font-weight: 800; color: #fff; line-height: 1.1;
+    }
+    .modal-latin { font-size: 0.85rem; color: rgba(255,255,255,0.58); font-style: italic; margin-top: 3px; }
+    .modal-body { padding: 22px 24px; }
+
+    .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+    .pill {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--foam); padding: 6px 12px;
+      border-radius: 20px; font-size: 0.81rem; font-weight: 600; color: var(--sea);
+    }
+    .m-section-title {
+      font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--text2); margin-bottom: 8px; margin-top: 18px;
+    }
+    .m-desc { font-size: 0.96rem; line-height: 1.7; color: var(--text); }
+    .m-method {
+      border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 8px;
+    }
+    .m-method h5 { font-size: 0.91rem; font-weight: 700; color: var(--sea); margin-bottom: 4px; }
+    .m-method p  { font-size: 0.84rem; color: var(--text2); line-height: 1.6; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag      { background: #fff3e0; color: #7a5000; font-size: 0.77rem; font-weight: 600; padding: 4px 10px; border-radius: 10px; }
+    .tag-blue { background: var(--foam); color: var(--wave); }
+    .legal-box {
+      background: #fffbeb; border-left: 3px solid var(--gold);
+      border-radius: 0 8px 8px 0; padding: 12px 14px;
+      font-size: 0.85rem; line-height: 1.65; color: #5c4700; margin-top: 6px;
+    }
+
+    /* ── LEAFLET CUSTOM ── */
+    .popup-title { font-family: 'Syne', sans-serif; font-size: 0.97rem; font-weight: 700; color: var(--sea); }
+    .popup-sub   { font-size: 0.76rem; color: var(--text2); margin-top: 2px; }
+    .popup-btn {
+      margin-top: 9px; display: block; width: 100%;
+      background: var(--sea); color: white;
+      font-size: 0.78rem; font-weight: 600;
+      padding: 7px 0; border-radius: 7px; border: none;
+      cursor: pointer; text-align: center; font-family: 'Inter', sans-serif;
+    }
+    .popup-btn:hover { background: var(--wave); }
+    .leaflet-popup-content-wrapper { border-radius: 12px; }
+    .leaflet-popup-content { margin: 14px 16px; min-width: 160px; }
+
+    /* ── HOW IT WORKS ── */
+    .how-section {
+      background: var(--white);
+      padding: 64px 32px;
+    }
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+    }
+    .how-grid::before {
+      content: '';
+      position: absolute;
+      top: 36px; left: calc(16.66% + 16px); right: calc(16.66% + 16px);
+      height: 2px;
+      background: linear-gradient(90deg, var(--foam), var(--wave), var(--foam));
+    }
+    .how-step { text-align: center; position: relative; }
+    .how-step:hover .how-icon-wrap { transform: translateY(-4px) scale(1.05); }
+    .how-icon-wrap {
+      width: 76px; height: 76px;
+      background: linear-gradient(135deg, var(--sea), var(--wave));
+      border-radius: 22px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 18px;
+      font-size: 2rem;
+      box-shadow: 0 8px 24px rgba(21,145,184,0.3);
+      position: relative; z-index: 1;
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .how-step-num {
+      position: absolute;
+      top: -4px; right: -4px;
+      width: 22px; height: 22px;
+      background: var(--coral);
+      color: white;
+      border-radius: 50%;
+      font-size: 0.68rem;
+      font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .how-step h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.05rem; font-weight: 800;
+      color: var(--sea); margin-bottom: 6px;
+    }
+    .how-step p { font-size: 0.88rem; color: var(--text2); line-height: 1.6; }
+
+    /* ── SEASON FILTER ── */
+    .season-filter {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .sf-btn {
+      padding: 7px 18px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.82rem; font-weight: 600;
+      color: var(--text2);
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .sf-btn:hover { border-color: var(--wave); color: var(--wave); transform: translateY(-1px); }
+    .sf-btn.active {
+      background: linear-gradient(120deg, var(--sea), var(--wave));
+      border-color: transparent; color: var(--white);
+      box-shadow: 0 4px 14px rgba(21,145,184,0.3);
+    }
+
+    /* ── ARTICLES SECTION ── */
+    #articles-section { background: var(--foam); }
+    .articles-cats {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .cat-btn {
+      padding: 7px 18px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.82rem; font-weight: 600;
+      color: var(--text2);
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .cat-btn:hover { border-color: var(--wave); color: var(--wave); transform: translateY(-1px); }
+    .cat-btn.active {
+      background: linear-gradient(120deg, var(--sea), var(--wave));
+      border-color: transparent; color: var(--white);
+      box-shadow: 0 4px 14px rgba(21,145,184,0.3);
+    }
+    .articles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 22px;
+    }
+    .article-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s;
+      border: 1px solid rgba(213,226,234,0.6);
+      display: flex; flex-direction: column;
+    }
+    .article-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-md); }
+    .article-cover {
+      height: 170px;
+      background: linear-gradient(135deg, var(--sea), var(--wave));
+      background-size: cover; background-position: center;
+      position: relative;
+      display: flex; align-items: flex-end;
+      padding: 14px;
+      flex-shrink: 0;
+    }
+    .article-cover-emoji {
+      position: absolute;
+      inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 3.5rem;
+      opacity: 0.9;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.25));
+    }
+    .article-cat-tag {
+      position: relative; z-index: 1;
+      background: rgba(255,255,255,0.95);
+      color: var(--sea);
+      font-size: 0.7rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 12px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .article-body { padding: 18px 20px; flex: 1; display: flex; flex-direction: column; }
+    .article-body h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem; font-weight: 800;
+      color: var(--sea); line-height: 1.25;
+      margin-bottom: 8px;
+    }
+    .article-excerpt {
+      font-size: 0.87rem; color: var(--text2);
+      line-height: 1.6; flex: 1;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .article-meta {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 14px;
+      font-size: 0.76rem; color: var(--text2);
+    }
+    .article-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text2); }
+    .articles-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text2);
+    }
+    .articles-empty .ae-icon { font-size: 3.5rem; opacity: 0.35; margin-bottom: 14px; }
+    .articles-empty h3 { font-family: 'Syne', sans-serif; color: var(--sea); font-size: 1.2rem; margin-bottom: 8px; }
+    .articles-empty p { font-size: 0.92rem; line-height: 1.6; max-width: 420px; margin: 0 auto; }
+
+    /* Article reader modal */
+    .article-reader {
+      background: var(--white);
+      border-radius: 16px;
+      max-width: 720px; width: 100%;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.25s ease;
+    }
+    .ar-cover {
+      height: 220px;
+      background: linear-gradient(135deg, var(--sea), var(--wave));
+      background-size: cover; background-position: center;
+      position: relative;
+    }
+    .ar-cover-emoji {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 5rem; opacity: 0.9;
+    }
+    .ar-close {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(0,0,0,0.4); border: none; color: white;
+      width: 36px; height: 36px; border-radius: 50%;
+      cursor: pointer; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px);
+    }
+    .ar-body { padding: 28px 32px 36px; }
+    .ar-cat {
+      display: inline-block;
+      background: var(--foam); color: var(--wave);
+      font-size: 0.72rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 12px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 14px;
+    }
+    .ar-body h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.8rem; font-weight: 800;
+      color: var(--sea); line-height: 1.2;
+      margin-bottom: 10px;
+    }
+    .ar-meta {
+      font-size: 0.82rem; color: var(--text2);
+      margin-bottom: 22px; padding-bottom: 22px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ar-content {
+      font-size: 1rem; line-height: 1.8; color: var(--text);
+    }
+    .ar-content p { margin-bottom: 16px; }
+    .ar-content h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.3rem; color: var(--sea);
+      margin: 26px 0 12px;
+    }
+    .ar-content h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem; color: var(--sea);
+      margin: 20px 0 10px;
+    }
+    .ar-content ul, .ar-content ol { margin: 0 0 16px 22px; }
+    .ar-content li { margin-bottom: 6px; }
+    .ar-content img { max-width: 100%; border-radius: 10px; margin: 16px 0; }
+    .ar-content a { color: var(--wave); text-decoration: underline; }
+    .ar-content strong { color: var(--sea); }
+    .ar-content blockquote {
+      border-left: 3px solid var(--wave);
+      padding: 8px 16px; margin: 16px 0;
+      background: var(--foam); border-radius: 0 8px 8px 0;
+      font-style: italic; color: var(--text2);
+    }
+
+    /* ── FOOTER (multi-column) ── */
+    footer {
+      background: #061f2e;
+      color: rgba(255,255,255,0.55);
+      padding: 52px 32px 28px;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto 36px;
+    }
+    .footer-brand .f-logo {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.2rem; font-weight: 800;
+      color: var(--white); margin-bottom: 10px;
+    }
+    .footer-brand .f-logo span { color: var(--gold); }
+    .footer-brand p { font-size: 0.84rem; line-height: 1.65; max-width: 280px; }
+    .footer-brand .f-sources {
+      margin-top: 14px;
+      font-size: 0.75rem; color: rgba(255,255,255,0.35);
+      line-height: 1.7;
+    }
+    .footer-col h4 {
+      font-size: 0.72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.5px;
+      color: rgba(255,255,255,0.4); margin-bottom: 14px;
+    }
+    .footer-col a, .footer-col span {
+      display: block;
+      font-size: 0.85rem; color: rgba(255,255,255,0.6);
+      text-decoration: none; margin-bottom: 8px;
+      transition: color 0.15s;
+    }
+    .footer-col a:hover { color: var(--white); }
+    .footer-bottom {
+      max-width: 1200px; margin: 0 auto;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 22px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px;
+    }
+    .footer-bottom p { font-size: 0.78rem; }
+    .footer-disclaimer {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.3);
+      max-width: 560px;
+      line-height: 1.5;
+    }
+
+    /* ── SCROLL TO TOP ── */
+    #scroll-top {
+      position: fixed;
+      bottom: 28px; right: 28px;
+      width: 44px; height: 44px;
+      background: var(--sea);
+      color: white; border: none; border-radius: 50%;
+      font-size: 1.1rem; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      display: none; align-items: center; justify-content: center;
+      z-index: 900;
+      transition: background 0.2s, transform 0.2s;
+    }
+    #scroll-top.visible { display: flex; }
+    #scroll-top:hover { background: var(--wave); transform: translateY(-2px); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 780px) {
+      .how-grid { grid-template-columns: 1fr; gap: 24px; }
+      .how-grid::before { display: none; }
+      .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+      .footer-bottom { flex-direction: column; align-items: flex-start; }
+    }
+    @media (max-width: 780px) {
+      .map-layout { grid-template-columns: 1fr; }
+      #map { height: 360px; }
+      .region-panel { min-height: 280px; }
+      .hero-stats { gap: 24px; }
+      .stat-num { font-size: 1.5rem; }
+      nav { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ NAV ══ -->
+<nav>
+  <!-- Row 1: logo + search -->
+  <div class="nav-row1">
+    <div class="nav-logo">Fish<span>Map</span> Greece</div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Ψάξε ψάρι, δόλωμα ή περιοχή…" autocomplete="off" />
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+  <!-- Row 2: quick-nav tabs (under logo, aligned left) -->
+  <div class="nav-row2">
+    <a class="nav-tab active" href="#map-section">🗺️ Χάρτης</a>
+    <a class="nav-tab" href="#fish-section">🐟 Ψάρια</a>
+    <a class="nav-tab" href="#methods-section">🎣 Μέθοδοι</a>
+    <a class="nav-tab" href="#articles-section">📰 Άρθρα</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ══ HERO ══ -->
+  <section class="hero">
+    <div class="hero-glow2"></div>
+    <div class="hero-eyebrow">🇬🇷 Ελληνικά Νερά</div>
+    <h1>Ψάρεψε <em>έξυπνα</em> σε κάθε γωνιά της Ελλάδας</h1>
+    <p>Ανακάλυψε ποια ψάρια υπάρχουν κοντά σου, ποιες μέθοδοι δουλεύουν και πότε είναι η κατάλληλη εποχή.</p>
+    <a href="#map-section" class="hero-cta">Άνοιξε τον Χάρτη →</a>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-num" data-count="24">24</div><div class="stat-label">Είδη Ψαριών</div></div>
+      <div class="stat"><div class="stat-num" data-count="18">18</div><div class="stat-label">Αλιευτικές Ζώνες</div></div>
+      <div class="stat"><div class="stat-num" data-count="6">6</div><div class="stat-label">Μέθοδοι</div></div>
+    </div>
+    <svg class="hero-waves" viewBox="0 0 1440 70" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M0,40 C240,70 480,10 720,30 C960,50 1200,15 1440,35 L1440,70 L0,70 Z" fill="var(--sand)"/>
+    </svg>
+  </section>
+
+  <!-- ══ HOW IT WORKS ══ -->
+  <div class="how-section">
+    <div style="text-align:center; margin-bottom:40px;">
+      <div class="section-title" style="font-size:1.6rem;">Πώς Λειτουργεί</div>
+      <div class="section-sub" style="margin-bottom:0;">Τρία βήματα για να βρεις το ιδανικό ψάρεμα</div>
+    </div>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="how-icon-wrap">🗺️<div class="how-step-num">1</div></div>
+        <h3>Βρες την Περιοχή</h3>
+        <p>Κλικ σε οποιοδήποτε σημείο του χάρτη — θάλασσα, λίμνη ή ποταμό — και δες αμέσως τι ψάρια υπάρχουν εκεί.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-icon-wrap">🐟<div class="how-step-num">2</div></div>
+        <h3>Μάθε για τα Ψάρια</h3>
+        <p>Κάθε είδος έχει λεπτομερή πληροφόρηση: εποχές, ελάχιστο μήκος, βάθος εύρεσης και νομική κατάσταση.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-icon-wrap">🎣<div class="how-step-num">3</div></div>
+        <h3>Ψάρεψε Έξυπνα</h3>
+        <p>Δες ποιες μέθοδοι και δολώματα ταιριάζουν σε κάθε είδος και περιοχή — και ψάρεψε με αυτοπεποίθηση.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MAP ══ -->
+  <div id="map-section" style="background:var(--sand);">
+    <div class="section">
+      <div class="section-title">🗺️ Χάρτης Αλιευτικών Περιοχών</div>
+      <div class="section-sub">Κλικ σε ένα σημείο για να δεις τα ψάρια της περιοχής</div>
+      <div class="map-layout">
+        <div id="map"></div>
+        <div class="region-panel">
+          <div class="panel-header">
+            <h3 id="panel-title">Επίλεξε Περιοχή</h3>
+            <p  id="panel-sub">Κλικ σε ένα σημείο στον χάρτη</p>
+          </div>
+          <div class="panel-body" id="panel-body">
+            <div class="panel-placeholder">
+              <div class="ph-icon">🎣</div>
+              <p>Κάνε κλικ σε μια αλιευτική τοποθεσία στον χάρτη και θα δεις εδώ ποια ψάρια απαντώνται.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FISH DATABASE ══ -->
+  <div id="fish-section" style="background:var(--foam); padding:60px 0;">
+    <div class="section" style="max-width:1200px; margin:0 auto; padding:0 32px;">
+      <div class="section-title">🐟 Βάση Δεδομένων Ψαριών</div>
+      <div class="section-sub">Κλικ σε κάθε ψάρι για λεπτομέρειες, μεθόδους και νομική πληροφόρηση</div>
+      <div class="season-filter">
+        <button class="sf-btn active" onclick="filterSeason('all', this)">🌊 Όλα</button>
+        <button class="sf-btn" onclick="filterSeason('Άνοιξη', this)">🌸 Άνοιξη</button>
+        <button class="sf-btn" onclick="filterSeason('Καλοκαίρι', this)">☀️ Καλοκαίρι</button>
+        <button class="sf-btn" onclick="filterSeason('Φθινόπωρο', this)">🍂 Φθινόπωρο</button>
+        <button class="sf-btn" onclick="filterSeason('Χειμώνας', this)">❄️ Χειμώνας</button>
+      </div>
+      <div class="fish-grid" id="fish-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══ METHODS ══ -->
+  <div id="methods-section" style="background:var(--sand); padding:60px 0;">
+    <div class="section" style="max-width:1200px; margin:0 auto; padding:0 32px;">
+      <div class="section-title">🎯 Μέθοδοι Αλιείας</div>
+      <div class="section-sub">Οι κύριες τεχνικές ψαρέματος στην Ελλάδα</div>
+      <div class="methods-grid" id="methods-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══ ARTICLES ══ -->
+  <div id="articles-section" style="padding:60px 0;">
+    <div class="section" style="max-width:1200px; margin:0 auto; padding:0 32px;">
+      <div class="section-title">📰 Άρθρα & Οδηγοί</div>
+      <div class="section-sub">Συμβουλές, οδηγοί και ιστορίες από τον κόσμο του ψαρέματος</div>
+      <div class="articles-cats" id="articles-cats"></div>
+      <div class="articles-grid" id="articles-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ══ -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="f-logo">Fish<span>Map</span> Greece</div>
+        <p>Ο πιο αναλυτικός οδηγός ψαρέματος για την Ελλάδα. Αξιόπιστες πληροφορίες για ψάρια, περιοχές και μεθόδους — για κάθε επίπεδο ψαρά.</p>
+        <div class="f-sources">
+          Δεδομένα από: ΕΛ.ΚΕ.ΘΕ. · FishBase · FAO GFCM · GBIF · EMODnet · ΥΠΑΑΤ
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Πλοήγηση</h4>
+        <a href="#map-section">🗺️ Χάρτης</a>
+        <a href="#fish-section">🐟 Ψάρια</a>
+        <a href="#methods-section">🎣 Μέθοδοι</a>
+        <a href="#map-section">📍 Αλιευτικές Ζώνες</a>
+      </div>
+      <div class="footer-col">
+        <h4>Πληροφορίες</h4>
+        <span>📋 Ελληνική Νομοθεσία</span>
+        <span>⚖️ Ελάχιστα Μήκη</span>
+        <span>🚫 Απαγορευμένες Ζώνες</span>
+        <span>📞 ΥΠΑΑΤ: 210 212 4000</span>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2024 FishMap Greece. Με επιφύλαξη παντός δικαιώματος.</p>
+      <p class="footer-disclaimer">Οι πληροφορίες παρέχονται αποκλειστικά για ενημερωτικούς σκοπούς. Πάντα τηρείτε την ισχύουσα ελληνική και ευρωπαϊκή αλιευτική νομοθεσία. Η FishMap Greece δεν φέρει ευθύνη για τυχόν ανακρίβειες.</p>
+    </div>
+  </footer>
+
+</div><!-- /page -->
+
+<!-- Scroll to top -->
+<button id="scroll-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Πάνω">↑</button>
+
+<!-- ══ MODAL ══ -->
+<div class="overlay" id="overlay" onclick="handleOverlay(event)">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- ══ ARTICLE READER ══ -->
+<div class="overlay" id="article-overlay" onclick="handleArticleOverlay(event)">
+  <div class="article-reader" id="article-reader"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ════════════════════════ DATA ════════════════════════ */
+/* DATA_START */
+const FISH = [
+  {
+    id:'lavraki', name:'Λαβράκι', latin:'Dicentrarchus labrax', emoji:'🐟',
+    family:'Θαλασσινό', minLength:25, depth:'0–50 μ.', difficulty:'★★★☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ένα από τα πιο δημοφιλή ψάρια της Μεσογείου. Ζει κοντά στις ακτές, σε βράχους, εκβολές ποταμών και λιμάνια. Είναι αρπακτικό και εξαιρετικά δυνατό για το μέγεθός του.',
+    methods:[
+      {name:'Spinning', desc:'Ρίχνεις τεχνητά δολώματα κοντά σε βράχους ή εκβολές. Ιδανικά τις πρώτες και τελευταίες ώρες της ημέρας.'},
+      {name:'Πετονιά από βράχο', desc:'Με ζωντανό δόλωμα (γαρίδα ή σαρδέλα) κοντά σε βραχώδεις ακτές.'}
+    ],
+    baits:['Γαρίδα','Σαρδέλα','Wobler','Soft lure','Jig'],
+    regions:['Σαρωνικός','Ιόνιο','Αιγαίο (Βόρειο)','Θερμαϊκός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 25 εκ. Απαγορεύεται το ψάρεμα κοντά σε ιχθυοτροφεία.'
+  },
+  {
+    id:'tsipoura', name:'Τσιπούρα', latin:'Sparus aurata', emoji:'🐡',
+    family:'Θαλασσινό', minLength:20, depth:'0–30 μ.', difficulty:'★★★★☆',
+    seasons:['Φθινόπωρο','Χειμώνας'],
+    desc:'Ψάρι του βυθού που ζει κοντά σε αμμώδεις βυθούς, λιβάδια Ποσειδωνίας και εκβολές. Εξαιρετικά επιφυλακτικό — απαιτεί λεπτή τεχνική.',
+    methods:[
+      {name:'Κάθετη', desc:'Από βάρκα πάνω από αμμώδη βυθό. Δόλωμα: γαρίδα, καλαμάρι, κυδώνι.'},
+      {name:'Feeder', desc:'Με καλούπι κοντά σε εκβολές, ειδικά το φθινόπωρο.'}
+    ],
+    baits:['Γαρίδα','Κυδώνι','Καλαμάρι','Σκουλήκι θαλάσσης','Μύδι'],
+    regions:['Σαρωνικός','Αιγαίο (Νότιο)','Κρητικό','Ιόνιο','Αμβρακικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 20 εκ.'
+  },
+  {
+    id:'fagri', name:'Φαγκρί', latin:'Pagrus pagrus', emoji:'🐠',
+    family:'Θαλασσινό', minLength:25, depth:'10–80 μ.', difficulty:'★★★★★',
+    seasons:['Άνοιξη','Καλοκαίρι'],
+    desc:'Το «βασιλιά» των ελληνικών θαλασσών. Ζει σε βραχώδεις βυθούς σε αρκετό βάθος. Εξαιρετικά επιφυλακτικό και σκληρό να το ψαρέψεις.',
+    methods:[
+      {name:'Παραγάδι', desc:'Πολλαπλά αγκίστρια με δόλωμα στον βυθό. Αφήνεται νύχτα, μαζεύεται πρωί.'},
+      {name:'Κάθετη από βάρκα', desc:'Σε 30–80μ. πάνω από βραχώδεις βυθούς.'}
+    ],
+    baits:['Καλαμάρι','Χταπόδι','Σαρδέλα','Κυδώνι','Σκουλήκι'],
+    regions:['Αιγαίο (Νότιο)','Κρητικό','Δωδεκάνησα','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 25 εκ.'
+  },
+  {
+    id:'sargos', name:'Σαργός', latin:'Diplodus sargus', emoji:'🐟',
+    family:'Θαλασσινό', minLength:17, depth:'0–50 μ.', difficulty:'★★☆☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Πολύ κοινό στις ελληνικές θάλασσες. Ζει κοντά σε βράχους και φυτεμένους βυθούς. Ιδανικό για αρχάριους λόγω αφθονίας.',
+    methods:[
+      {name:'Πετονιά από βράχο', desc:'Από ακτή ή βράχια, με ζωντανό δόλωμα κοντά στον βυθό.'},
+      {name:'Ψαροντούφεκο', desc:'Κυνηγείται συχνά σε ρηχά βραχώδη νερά.'}
+    ],
+    baits:['Σκουλήκι','Κυδώνι','Γαρίδα','Μύδι','Ψωμί'],
+    regions:['Αιγαίο (Βόρειο)','Αιγαίο (Νότιο)','Σαρωνικός','Ιόνιο','Κρητικό'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 17 εκ.'
+  },
+  {
+    id:'synagrida', name:'Συναγρίδα', latin:'Pagellus erythrinus', emoji:'🐡',
+    family:'Θαλασσινό', minLength:15, depth:'20–100 μ.', difficulty:'★★★☆☆',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ζει σε αμμώδεις και λασπώδεις βυθούς σε μεσαία βάθη. Εξαιρετικά νόστιμο και πολύ δημοφιλές στην Ελλάδα.',
+    methods:[
+      {name:'Κάθετη από βάρκα', desc:'Σε 30–80μ. βάθος με γαρίδα ή σκουλήκι.'},
+      {name:'Παραγάδι', desc:'Αποτελεσματικό σε αμμώδεις βυθούς.'}
+    ],
+    baits:['Γαρίδα','Σκουλήκι','Καλαμάρι'],
+    regions:['Θερμαϊκός','Αιγαίο (Βόρειο)','Αιγαίο (Νότιο)','Κρητικό'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 15 εκ.'
+  },
+  {
+    id:'kefali', name:'Κέφαλος', latin:'Mugil cephalus', emoji:'🐟',
+    family:'Θαλασσινό / Λιμνοθάλασσα', minLength:20, depth:'0–10 μ.', difficulty:'★★☆☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο','Χειμώνας'],
+    desc:'Εξαιρετικά κοινός σε λιμάνια, εκβολές ποταμών και λιμνοθάλασσες. Ψαρεύεται όλο τον χρόνο.',
+    methods:[
+      {name:'Επιφάνεια', desc:'Ψωμί ή ζύμη στην επιφάνεια σε ήρεμα νερά λιμανιών.'},
+      {name:'Feeder', desc:'Με ελαφρύ αμόλυβδο και λεπτή πετονιά κοντά σε εκβολές.'}
+    ],
+    baits:['Ψωμί','Ζύμη','Καλαμπόκι','Σκουλήκι'],
+    regions:['Θερμαϊκός','Αμβρακικός','Σαρωνικός','Αιγαίο (Βόρειο)'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 20 εκ.'
+  },
+  {
+    id:'lithrini', name:'Λιθρίνι', latin:'Pagellus acarne', emoji:'🐠',
+    family:'Θαλασσινό', minLength:15, depth:'10–60 μ.', difficulty:'★★☆☆☆',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Πολύ διαδεδομένο στο Αιγαίο και το Ιόνιο. Σχηματίζει κοπάδια κοντά σε αμμώδεις βυθούς.',
+    methods:[
+      {name:'Κάθετη από βάρκα', desc:'Με γαρίδα ή σκουλήκι σε 20–50μ.'},
+      {name:'Παραγάδι', desc:'Αποτελεσματικό μαζί με άλλα μικρομεσαία ψάρια.'}
+    ],
+    baits:['Γαρίδα','Σκουλήκι','Κυδώνι'],
+    regions:['Αιγαίο (Βόρειο)','Αιγαίο (Νότιο)','Κρητικό','Δωδεκάνησα'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 15 εκ.'
+  },
+  {
+    id:'melanouri', name:'Μελανούρι', latin:'Oblada melanura', emoji:'🐟',
+    family:'Θαλασσινό', minLength:15, depth:'0–30 μ.', difficulty:'★☆☆☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι'],
+    desc:'Από τα πιο κοινά ψάρια στις ελληνικές θάλασσες. Ιδανικό για αρχάριους και παιδιά.',
+    methods:[
+      {name:'Πετονιά επιφάνειας', desc:'Φελλός στην επιφάνεια με ψωμί ή σκουλήκι.'}
+    ],
+    baits:['Ψωμί','Σκουλήκι','Γαρίδα'],
+    regions:['Αιγαίο (Βόρειο)','Αιγαίο (Νότιο)','Σαρωνικός','Κρητικό','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 15 εκ.'
+  },
+  {
+    id:'sfinaki', name:'Σφυρίδα', latin:'Epinephelus marginatus', emoji:'🐡',
+    family:'Θαλασσινό', minLength:45, depth:'10–200 μ.', difficulty:'★★★★★',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ο «βασιλιάς» των βραχωδών βυθών. Εδαφική και μοναχική, εξαιρετικά δυνατή. Προστατεύεται σε πολλές περιοχές Natura 2000.',
+    methods:[
+      {name:'Κάθετη βαρέων', desc:'Μεγάλα αγκίστρια με χταπόδι ή ζωντανό ψάρι σε βραχώδεις βυθούς.'},
+      {name:'Ψαροντούφεκο', desc:'Απαιτεί άδεια και εμπειρία κατάδυσης.'}
+    ],
+    baits:['Χταπόδι','Ζωντανό ψάρι','Καλαμάρι'],
+    regions:['Κρητικό','Αιγαίο (Νότιο)','Δωδεκάνησα','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 45 εκ. Απαγορεύεται σε πολλές ΖΕΠ (Natura 2000).'
+  },
+  {
+    id:'rofos', name:'Ροφός', latin:'Epinephelus aeneus', emoji:'🐟',
+    family:'Θαλασσινό', minLength:33, depth:'15–100 μ.', difficulty:'★★★★★',
+    seasons:['Καλοκαίρι'],
+    desc:'Σπάνιο και πολύτιμο ψάρι. Ζει σε βαθύτερους βραχώδεις βυθούς. Από τα πιο νόστιμα του Αιγαίου.',
+    methods:[
+      {name:'Κάθετη βαρέων', desc:'Βαθύ ψάρεμα σε βραχώδεις περιοχές με μεγάλα δολώματα.'}
+    ],
+    baits:['Χταπόδι','Σαρδέλα','Καλαμάρι'],
+    regions:['Αιγαίο (Νότιο)','Κρητικό','Δωδεκάνησα'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 33 εκ.'
+  },
+  {
+    id:'palamida', name:'Παλαμίδα', latin:'Sarda sarda', emoji:'🐟',
+    family:'Πελαγικό', minLength:25, depth:'0–100 μ.', difficulty:'★★★☆☆',
+    seasons:['Φθινόπωρο','Χειμώνας'],
+    desc:'Γρήγορο πελαγικό ψάρι που έρχεται στις ελληνικές θάλασσες κυρίως το φθινόπωρο ακολουθώντας σμηνουριά.',
+    methods:[
+      {name:'Jigging', desc:'Μεταλλικά jigs που ρίχνονται μακριά και ανακτώνται γρήγορα.'},
+      {name:'Trolling', desc:'Σύρσιμο δολώματος από κινούμενη βάρκα.'}
+    ],
+    baits:['Jig','Wobler','Ζωντανό ψάρι','Φτερό'],
+    regions:['Αιγαίο (Βόρειο)','Θερμαϊκός','Σαρωνικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 25 εκ.'
+  },
+  {
+    id:'perka', name:'Πέρκα', latin:'Perca fluviatilis', emoji:'🐟',
+    family:'Γλυκό Νερό', minLength:20, depth:'0–10 μ.', difficulty:'★★☆☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Κοινή σε λίμνες και ποτάμια της βόρειας Ελλάδας. Αρπακτική — επιτίθεται σε τεχνητά δολώματα.',
+    methods:[
+      {name:'Spinning', desc:'Μικρά τεχνητά δολώματα κοντά σε υδρόβια βλάστηση.'},
+      {name:'Πετονιά', desc:'Με ζωντανά δολώματα κοντά στον βυθό.'}
+    ],
+    baits:['Σκουλήκι','Μικρό jig','Soft lure','Ζωντανό ψαράκι'],
+    regions:['Λίμνη Κερκίνη','Λίμνη Βόλβη','Αξιός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 20 εκ. Ελέγξτε τους τοπικούς κανονισμούς.'
+  },
+  {
+    id:'skorpina', name:'Σκορπίνα', latin:'Scorpaena scrofa', emoji:'🐟',
+    family:'Θαλασσινό', minLength:18, depth:'20–150 μ.', difficulty:'★★★☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ψάρι με δηλητηριώδη αγκάθια που ζει σε βραχώδεις βυθούς. Εξαιρετικό για ψαρόσουπα. Προσοχή στα αγκάθια κατά τον χειρισμό.',
+    methods:[
+      {name:'Κάθετη από βάρκα', desc:'Με γαρίδα ή κομμάτι ψαριού κοντά σε βράχια.'},
+      {name:'Παραγάδι', desc:'Αποτελεσματικό σε βραχώδεις βυθούς.'}
+    ],
+    baits:['Γαρίδα','Σαρδέλα','Κομμάτι καλαμαριού'],
+    regions:['Αιγαίο (Νότιο)','Κρητικό','Ιόνιο','Δωδεκάνησα','Παγασητικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 18 εκ. Προσοχή στα δηλητηριώδη αγκάθια.'
+  },
+  {
+    id:'gopa', name:'Γόπα', latin:'Boops boops', emoji:'🐟',
+    family:'Θαλασσινό', minLength:12, depth:'0–100 μ.', difficulty:'★☆☆☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο','Χειμώνας'],
+    desc:'Πολύ κοινό ψάρι που σχηματίζει μεγάλα κοπάδια. Ιδανικό για αρχάριους και δόλωμα για μεγαλύτερα ψάρια.',
+    methods:[
+      {name:'Πετονιά', desc:'Με μικρά αγκίστρια και σκουλήκι ή ψωμί.'},
+      {name:'Σύρτη', desc:'Πολλά αγκίστρια σε σειρά για κοπάδια.'}
+    ],
+    baits:['Σκουλήκι','Ψωμί','Ζύμη'],
+    regions:['Αιγαίο (Βόρειο)','Αιγαίο (Νότιο)','Σαρωνικός','Παγασητικός','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 12 εκ.'
+  },
+  {
+    id:'kolios', name:'Κολιός', latin:'Scomber colias', emoji:'🐟',
+    family:'Πελαγικό', minLength:18, depth:'0–250 μ.', difficulty:'★★☆☆☆',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Γρήγορο πελαγικό ψάρι που σχηματίζει κοπάδια. Πλούσιο σε ωμέγα-3 και εξαιρετικό στη σχάρα.',
+    methods:[
+      {name:'Σύρτη με φτερά', desc:'Πολλαπλά τεχνητά φτερά για κοπάδια στην επιφάνεια.'},
+      {name:'Jigging', desc:'Μικρά μεταλλικά jigs.'}
+    ],
+    baits:['Φτερό','Μικρό jig','Κομμάτι σαρδέλας'],
+    regions:['Αιγαίο (Βόρειο)','Θερμαϊκός','Σαρωνικός','Παγασητικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 18 εκ.'
+  },
+  {
+    id:'safridi', name:'Σαφρίδι', latin:'Trachurus trachurus', emoji:'🐟',
+    family:'Πελαγικό', minLength:15, depth:'0–200 μ.', difficulty:'★★☆☆☆',
+    seasons:['Καλοκαίρι','Φθινόπωρο','Χειμώνας'],
+    desc:'Πελαγικό ψάρι σε κοπάδια, δραστήριο κυρίως τις νυχτερινές ώρες. Δημοφιλές για τηγάνισμα.',
+    methods:[
+      {name:'Σύρτη', desc:'Πολλά μικρά αγκίστρια με φτερά.'},
+      {name:'Νυχτερινό ψάρεμα', desc:'Με φως που προσελκύει τα κοπάδια.'}
+    ],
+    baits:['Φτερό','Σκουλήκι','Μικρό δόλωμα'],
+    regions:['Αιγαίο (Βόρειο)','Σαρωνικός','Παγασητικός','Θερμαϊκός','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 15 εκ.'
+  },
+  {
+    id:'mourmoura', name:'Μουρμούρα', latin:'Lithognathus mormyrus', emoji:'🐟',
+    family:'Θαλασσινό', minLength:20, depth:'0–40 μ.', difficulty:'★★★☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Όμορφο ψάρι με χαρακτηριστικές κάθετες ρίγες. Ζει σε αμμώδεις βυθούς κοντά στην ακτή. Πολύ νόστιμο.',
+    methods:[
+      {name:'Surfcasting', desc:'Ρίψη από την παραλία σε αμμώδη βυθό.'},
+      {name:'Πετονιά βυθού', desc:'Με σκουλήκι ή γαρίδα κοντά στον πάτο.'}
+    ],
+    baits:['Σκουλήκι θαλάσσης','Γαρίδα','Κοχύλι'],
+    regions:['Αιγαίο (Νότιο)','Σαρωνικός','Ιόνιο','Κρητικό','Λακωνικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 20 εκ.'
+  },
+  {
+    id:'chelidonopsaro', name:'Χριστόψαρο', latin:'Zeus faber', emoji:'🐟',
+    family:'Θαλασσινό', minLength:25, depth:'50–200 μ.', difficulty:'★★★★★',
+    seasons:['Χειμώνας','Άνοιξη'],
+    desc:'Εντυπωσιακό ψάρι με χαρακτηριστική μαύρη κηλίδα. Σπάνιο και εξαιρετικά νόστιμο — από τα ακριβότερα της αγοράς.',
+    methods:[
+      {name:'Κάθετη βαθέων', desc:'Με ζωντανό δόλωμα σε μεγάλα βάθη.'},
+      {name:'Trolling βαθέων', desc:'Αργό σύρσιμο κοντά στον βυθό.'}
+    ],
+    baits:['Ζωντανό ψαράκι','Σαρδέλα','Καλαμάρι'],
+    regions:['Αιγαίο (Νότιο)','Κρητικό','Ιόνιο','Δωδεκάνησα'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 25 εκ.'
+  },
+  {
+    id:'glossa', name:'Γλώσσα', latin:'Solea solea', emoji:'🐟',
+    family:'Θαλασσινό', minLength:20, depth:'10–60 μ.', difficulty:'★★★☆☆',
+    seasons:['Φθινόπωρο','Χειμώνας','Άνοιξη'],
+    desc:'Πλατύψαρο που ζει θαμμένο σε αμμώδεις και λασπώδεις βυθούς. Εξαιρετικά εκλεπτυσμένη γεύση.',
+    methods:[
+      {name:'Πετονιά βυθού', desc:'Με σκουλήκι σε αμμώδη βυθό.'},
+      {name:'Surfcasting', desc:'Από παραλία με φυσικό δόλωμα.'}
+    ],
+    baits:['Σκουλήκι θαλάσσης','Γαρίδα','Μύδι'],
+    regions:['Θερμαϊκός','Αμβρακικός','Παγασητικός','Σαρωνικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 20 εκ.'
+  },
+  {
+    id:'xifios', name:'Ξιφίας', latin:'Xiphias gladius', emoji:'🗡️',
+    family:'Πελαγικό', minLength:90, depth:'0–800 μ.', difficulty:'★★★★★',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ο βασιλιάς των πελαγικών. Τεράστιο και ισχυρό ψάρι με χαρακτηριστικό ξίφος. Απαιτεί ειδικό εξοπλισμό και εμπειρία.',
+    methods:[
+      {name:'Big game trolling', desc:'Σύρσιμο μεγάλων δολωμάτων σε ανοιχτή θάλασσα.'},
+      {name:'Drifting νυχτερινό', desc:'Με ζωντανό δόλωμα σε μεγάλο βάθος τη νύχτα.'}
+    ],
+    baits:['Καλαμάρι','Ζωντανό ψάρι','Μεγάλο τεχνητό'],
+    regions:['Αιγαίο (Νότιο)','Ιόνιο','Κρητικό'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 90 εκ. (κατώτατο σφαγής). Αυστηρές ποσοστώσεις ICCAT.'
+  },
+  {
+    id:'tonos', name:'Τόνος', latin:'Thunnus thynnus', emoji:'🐟',
+    family:'Πελαγικό', minLength:115, depth:'0–500 μ.', difficulty:'★★★★★',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ο ερυθρός τόνος — από τα ταχύτερα και ισχυρότερα ψάρια. Μπορεί να ξεπεράσει τα 300 κιλά. Απαιτεί άδεια για στοχευμένη αλιεία.',
+    methods:[
+      {name:'Big game trolling', desc:'Επαγγελματικός εξοπλισμός με βαριά μηχανισμούς.'},
+      {name:'Popping/Spinning', desc:'Επιφανειακά τεχνητά για μικρότερα άτομα.'}
+    ],
+    baits:['Μεγάλο τεχνητό','Ζωντανό σκουμπρί','Popper'],
+    regions:['Αιγαίο (Νότιο)','Ιόνιο','Κρητικό','Δωδεκάνησα'],
+    legal:'Απαιτείται ειδική άδεια ICCAT. Αυστηρές ποσοστώσεις — ελέγξτε την ισχύουσα νομοθεσία.'
+  },
+  {
+    id:'magiatiko', name:'Μαγιάτικο', latin:'Seriola dumerili', emoji:'🐟',
+    family:'Πελαγικό', minLength:45, depth:'20–70 μ.', difficulty:'★★★★★',
+    seasons:['Καλοκαίρι','Φθινόπωρο'],
+    desc:'Ισχυρότατο αρπακτικό που δίνει επική μάχη. Ζει κοντά σε υφάλους και ναυάγια. Όνειρο κάθε ψαρά με spinning.',
+    methods:[
+      {name:'Jigging', desc:'Βαριά μεταλλικά jigs κοντά σε υφάλους.'},
+      {name:'Ζωντανό δόλωμα', desc:'Με ζωντανό σαφρίδι ή γόπα.'}
+    ],
+    baits:['Μεγάλο jig','Ζωντανό σαφρίδι','Ζωντανή γόπα'],
+    regions:['Αιγαίο (Νότιο)','Κρητικό','Δωδεκάνησα','Ιόνιο'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 45 εκ.'
+  },
+  {
+    id:'kranios', name:'Κρανιός', latin:'Argyrosomus regius', emoji:'🐟',
+    family:'Θαλασσινό', minLength:42, depth:'15–100 μ.', difficulty:'★★★★☆',
+    seasons:['Άνοιξη','Καλοκαίρι'],
+    desc:'Μεγάλο και δυνατό ψάρι που ζει κοντά σε εκβολές και αμμώδεις βυθούς. Μπορεί να φτάσει τα 50 κιλά.',
+    methods:[
+      {name:'Spinning', desc:'Μεγάλα τεχνητά κοντά σε εκβολές ποταμών.'},
+      {name:'Ζωντανό δόλωμα', desc:'Με ζωντανό ψαράκι κοντά στον βυθό.'}
+    ],
+    baits:['Μεγάλο soft lure','Ζωντανό ψαράκι','Καλαμάρι'],
+    regions:['Αμβρακικός','Θερμαϊκός','Ιόνιο','Σαρωνικός'],
+    legal:'Ελάχιστο επιτρεπόμενο μήκος: 42 εκ.'
+  },
+  {
+    id:'cheli', name:'Χέλι', latin:'Anguilla anguilla', emoji:'🐍',
+    family:'Γλυκό Νερό / Λιμνοθάλασσα', minLength:35, depth:'0–20 μ.', difficulty:'★★★☆☆',
+    seasons:['Άνοιξη','Καλοκαίρι','Φθινόπωρο'],
+    desc:'Απειλούμενο είδος με εκπληκτικό κύκλο ζωής — γεννιέται στη Θάλασσα των Σαργασσών. Ζει σε λιμνοθάλασσες και ποτάμια.',
+    methods:[
+      {name:'Πετονιά βυθού', desc:'Με σκουλήκι ή κομμάτι ψαριού τη νύχτα.'}
+    ],
+    baits:['Σκουλήκι','Κομμάτι ψαριού','Γαρίδα'],
+    regions:['Αμβρακικός','Λίμνη Κερκίνη','Μεσολόγγι'],
+    legal:'ΠΡΟΣΟΧΗ: Απειλούμενο είδος. Ισχύουν αυστηροί περιορισμοί και περίοδοι απαγόρευσης.'
+  },
+];
+
+const REGIONS = [
+  {name:'Αιγαίο (Βόρειο)',  lat:39.8, lng:25.2, desc:'Θάσος, Σαμοθράκη, Λήμνος',    fish:['lavraki','sargos','synagrida','lithrini','kefali','melanouri','palamida']},
+  {name:'Αιγαίο (Νότιο)',   lat:37.4, lng:25.5, desc:'Κυκλάδες',                      fish:['fagri','tsipoura','sargos','synagrida','lithrini','melanouri','sfinaki','rofos']},
+  {name:'Κρητικό Πέλαγος',  lat:35.5, lng:24.8, desc:'Κρήτη & γύρω νησιά',           fish:['fagri','sfinaki','rofos','tsipoura','sargos','lithrini','melanouri']},
+  {name:'Δωδεκάνησα',       lat:36.4, lng:27.8, desc:'Ρόδος, Κως, Πάτμος',           fish:['fagri','sfinaki','rofos','synagrida','lithrini','tsipoura']},
+  {name:'Σαρωνικός',        lat:37.8, lng:23.5, desc:'Αθήνα, Πειραιάς, Αίγινα',      fish:['lavraki','tsipoura','sargos','kefali','melanouri','palamida']},
+  {name:'Θερμαϊκός',        lat:40.4, lng:22.9, desc:'Θεσσαλονίκη',                  fish:['lavraki','synagrida','kefali','palamida','sargos']},
+  {name:'Ιόνιο',            lat:38.5, lng:20.5, desc:'Κέρκυρα, Κεφαλονιά, Ζάκυνθος', fish:['lavraki','fagri','tsipoura','sargos','sfinaki','melanouri']},
+  {name:'Αμβρακικός',       lat:39.0, lng:20.9, desc:'Πρέβεζα, Άρτα',                fish:['lavraki','tsipoura','kefali','sargos']},
+  {name:'Λακωνικός',        lat:36.8, lng:22.7, desc:'Σπάρτη, Μονεμβασιά',           fish:['fagri','sargos','tsipoura','melanouri','lavraki']},
+  {name:'Στρυμωνικός',      lat:40.8, lng:23.9, desc:'Καβάλα, Χαλκιδική',            fish:['lavraki','sargos','palamida','synagrida','kefali']},
+  {name:'Παγασητικός',     lat:39.3, lng:23.0, desc:'Βόλος, Πήλιο',                fish:['lavraki','sargos','melanouri','gopa','kolios','safridi','skorpina','glossa']},
+  {name:'Ευβοϊκός',        lat:38.5, lng:23.6, desc:'Χαλκίδα, Εύβοια',            fish:['lavraki','tsipoura','sargos','melanouri','gopa','mourmoura']},
+  {name:'Κορινθιακός',     lat:38.2, lng:22.6, desc:'Κόρινθος, Ναύπακτος',       fish:['lavraki','sargos','synagrida','melanouri','gopa']},
+  {name:'Μεσολόγγι',       lat:38.35,lng:21.4, desc:'Λιμνοθάλασσα Μεσολογγίου',  fish:['tsipoura','lavraki','kefali','cheli','sargos']},
+  {name:'Χαλκιδική',       lat:40.1, lng:23.4, desc:'Κασσάνδρα, Σιθωνία',         fish:['lavraki','tsipoura','sargos','synagrida','mourmoura','gopa']},
+  {name:'Πατραϊκός',       lat:38.2, lng:21.6, desc:'Πάτρα, Ρίο',                 fish:['lavraki','tsipoura','sargos','kranios','gopa']},
+  {name:'Λίμνη Κερκίνη',   lat:41.2, lng:23.1, desc:'Σέρρες — γλυκό νερό',          fish:['perka']},
+  {name:'Λίμνη Βόλβη',     lat:40.7, lng:23.4, desc:'Θεσσαλονίκη — γλυκό νερό',     fish:['perka']}
+];
+
+const METHODS = [
+  {icon:'🎣', name:'Spinning',       sub:'Τεχνητά δολώματα',   desc:'Ρίχνεις ένα τεχνητό δόλωμα (wobler, jig, soft lure) και το ανακτάς με ρυθμό ώστε να μιμείται ένα ψάρι. Ιδανικό για αρπακτικά όπως λαβράκι και παλαμίδα. Δεν χρειάζεται βάρκα.', fish:['Λαβράκι','Παλαμίδα','Πέρκα']},
+  {icon:'⚓', name:'Κάθετη',         sub:'Από βάρκα',           desc:'Κλασική τεχνική με πετονιά κατεβασμένη κατακόρυφα στον βυθό. Ιδανική σε 20–100μ. βάθος. Χρειάζεται γνώση βυθοτοπογραφίας.', fish:['Τσιπούρα','Συναγρίδα','Φαγκρί','Λιθρίνι','Σφυρίδα']},
+  {icon:'🪝', name:'Παραγάδι',       sub:'Πολλαπλά αγκίστρια', desc:'Μακριά γραμμή με δεκάδες αγκίστρια που αφήνεται στον βυθό νύχτα και μαζεύεται πρωί. Πολύ αποτελεσματικό, απαιτεί βάρκα.', fish:['Φαγκρί','Ροφός','Συναγρίδα','Λαβράκι']},
+  {icon:'🤿', name:'Ψαροντούφεκο',   sub:'Υποβρύχιο κυνήγι',   desc:'Κολύμπι με μάσκα και ψαροντούφεκο σε βραχώδεις βυθούς. Απαιτεί άδεια και εμπειρία κατάδυσης. Πολύ αποτελεσματικό.', fish:['Σαργός','Σφυρίδα','Ροφός','Μελανούρι']},
+  {icon:'🎏', name:'Feeder',          sub:'Ψάρεμα βυθού',       desc:'Ειδικό καλούπι με "groundbait" που ελκύει ψάρια στο σημείο. Εξαιρετικό για εκβολές και ήρεμα νερά. Μπορεί από ακτή.', fish:['Τσιπούρα','Κέφαλος']},
+  {icon:'⛵', name:'Trolling',        sub:'Σύρσιμο από βάρκα',  desc:'Τεχνητά ή φυσικά δολώματα σύρονται πίσω από κινούμενη βάρκα. Ιδανικό για πελαγικά ψάρια σε ανοιχτή θάλασσα.', fish:['Παλαμίδα','Λαβράκι']}
+];
+
+/* Κατηγορίες άρθρων — πρόσθεσε ή άλλαξε από το admin */
+const ARTICLE_CATEGORIES = ['Οδηγοί','Τεχνικές','Εξοπλισμός','Περιοχές','Νέα'];
+
+/* Άρθρα — γράψε τα δικά σου από το admin.html.
+   Κάθε άρθρο: {id, title, category, emoji, cover, excerpt, author, date, content(HTML)} */
+const ARTICLES = [];
+/* DATA_END */
+
+/* ════════ SEASON FILTER ════════ */
+function filterSeason(season, btn) {
+  document.querySelectorAll('.sf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const cards = document.querySelectorAll('.fish-card');
+  cards.forEach(card => {
+    if (season === 'all') { card.style.display = ''; return; }
+    const id = card.dataset.id;
+    const fish = FISH.find(f => f.id === id);
+    card.style.display = (fish && fish.seasons.includes(season)) ? '' : 'none';
+  });
+}
+
+/* ════════ SCROLL TO TOP ════════ */
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('scroll-top');
+  btn.classList.toggle('visible', window.scrollY > 400);
+}, {passive: true});
+
+/* ════════ MAP ════════ */
+let map = null;
+if (typeof L !== 'undefined') {
+  map = L.map('map', {center:[38.5,24.0], zoom:6});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap contributors', maxZoom:18}).addTo(map);
+
+  const circleStyle = {radius:10, fillColor:'#0a3d5c', color:'#ffffff', weight:2.5, opacity:1, fillOpacity:0.9};
+
+  REGIONS.forEach(r => {
+    const m = L.circleMarker([r.lat, r.lng], circleStyle).addTo(map);
+    m.bindPopup(`<div>
+      <div class="popup-title">${r.name}</div>
+      <div class="popup-sub">${r.desc}</div>
+      <div class="popup-sub">${r.fish.length} είδη ψαριών</div>
+      <button class="popup-btn" onclick="showRegion('${r.name}')">Δες τα ψάρια →</button>
+    </div>`, {maxWidth:220});
+    m.on('click', () => m.openPopup());
+  });
+} else {
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text2);text-align:center;padding:20px;">Ο χάρτης χρειάζεται σύνδεση στο διαδίκτυο για να φορτώσει.</div>';
+}
+
+function showRegion(name) {
+  const region = REGIONS.find(r => r.name === name);
+  if (!region) return;
+  document.getElementById('panel-title').textContent = name;
+  document.getElementById('panel-sub').textContent = `${region.fish.length} είδη — ${region.desc}`;
+  const fishList = region.fish.map(id => FISH.find(f => f.id === id)).filter(Boolean);
+  document.getElementById('panel-body').innerHTML = fishList.map(f => `
+    <div class="fish-chip" onclick="openModal('${f.id}')">
+      <div class="fc-emoji">${f.emoji}</div>
+      <div class="fc-info"><h4>${f.name}</h4><span>${f.latin}</span></div>
+      <div class="fc-badge">${f.seasons[0]}</div>
+    </div>
+  `).join('');
+  if (map) map.closePopup();
+}
+
+/* ════════ FISH GRID ════════ */
+const seasonDot = {Άνοιξη:'dot-s', Καλοκαίρι:'dot-k', Φθινόπωρο:'dot-f', Χειμώνας:'dot-x'};
+document.getElementById('fish-grid').innerHTML = FISH.map(f => `
+  <div class="fish-card" data-id="${f.id}" onclick="openModal('${f.id}')">
+    ${f.image ? `<img src="${f.image}" alt="${f.name}" style="width:100%;height:100px;object-fit:cover;border-radius:8px;margin-bottom:8px;" loading="lazy" onerror="this.style.display='none'">` : `<div class="fish-card-icon">${f.emoji}</div>`}
+    <h4>${f.name}</h4>
+    <div class="latin">${f.latin}</div>
+    <div class="meta">
+      ${f.seasons.map(s=>`<span class="season-dot ${seasonDot[s]||''}"></span>`).join('')}
+      ${f.seasons.join(' · ')}
+    </div>
+    <div class="meta" style="margin-top:4px">Ελάχ. ${f.minLength} εκ. · ${f.depth}</div>
+  </div>
+`).join('');
+
+/* ════════ METHODS GRID ════════ */
+document.getElementById('methods-grid').innerHTML = METHODS.map(m => `
+  <div class="method-card">
+    <div class="mc-head">
+      <div class="mc-icon">${m.icon}</div>
+      <div><h3>${m.name}</h3><p>${m.sub}</p></div>
+    </div>
+    <div class="mc-body">
+      <p>${m.desc}</p>
+      <div class="mc-tags">${m.fish.map(f=>`<span class="mc-tag">${f}</span>`).join('')}</div>
+    </div>
+  </div>
+`).join('');
+
+/* ════════ ARTICLES ════════ */
+let currentArticleCat = 'all';
+
+function renderArticleCats() {
+  const cats = ['all', ...ARTICLE_CATEGORIES];
+  document.getElementById('articles-cats').innerHTML = cats.map(c => `
+    <button class="cat-btn ${c===currentArticleCat?'active':''}" onclick="filterArticles('${c}', this)">
+      ${c === 'all' ? '📚 Όλα' : c}
+    </button>
+  `).join('');
+}
+
+function renderArticles() {
+  const grid = document.getElementById('articles-grid');
+  const list = currentArticleCat === 'all'
+    ? ARTICLES
+    : ARTICLES.filter(a => a.category === currentArticleCat);
+
+  if (!ARTICLES.length) {
+    grid.innerHTML = `
+      <div class="articles-empty">
+        <div class="ae-icon">✍️</div>
+        <h3>Σύντομα νέα άρθρα</h3>
+        <p>Εδώ θα δημοσιεύονται οδηγοί, τεχνικές και ιστορίες ψαρέματος. Μείνε συντονισμένος!</p>
+      </div>`;
+    return;
+  }
+  if (!list.length) {
+    grid.innerHTML = `
+      <div class="articles-empty">
+        <div class="ae-icon">🔍</div>
+        <h3>Καμία δημοσίευση εδώ</h3>
+        <p>Δεν υπάρχουν ακόμα άρθρα σε αυτή την κατηγορία.</p>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(a => `
+    <div class="article-card" onclick="openArticle('${a.id}')">
+      <div class="article-cover" style="${a.cover ? `background-image:url('${a.cover}')` : ''}">
+        ${!a.cover ? `<div class="article-cover-emoji">${a.emoji || '📄'}</div>` : ''}
+        <span class="article-cat-tag">${a.category}</span>
+      </div>
+      <div class="article-body">
+        <h3>${a.title}</h3>
+        <p class="article-excerpt">${a.excerpt || ''}</p>
+        <div class="article-meta">
+          <span>${a.author || 'FishMap'}</span>
+          <span class="dot"></span>
+          <span>${a.date || ''}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterArticles(cat, btn) {
+  currentArticleCat = cat;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderArticles();
+}
+
+function openArticle(id) {
+  const a = ARTICLES.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('article-reader').innerHTML = `
+    <div class="ar-cover" style="${a.cover ? `background-image:url('${a.cover}')` : ''}">
+      ${!a.cover ? `<div class="ar-cover-emoji">${a.emoji || '📄'}</div>` : ''}
+      <button class="ar-close" onclick="closeArticle()">✕</button>
+    </div>
+    <div class="ar-body">
+      <span class="ar-cat">${a.category}</span>
+      <h1>${a.title}</h1>
+      <div class="ar-meta">✍️ ${a.author || 'FishMap'} · 📅 ${a.date || ''}</div>
+      <div class="ar-content">${a.content || ''}</div>
+    </div>
+  `;
+  document.getElementById('article-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeArticle() {
+  document.getElementById('article-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function handleArticleOverlay(e) {
+  if (e.target === document.getElementById('article-overlay')) closeArticle();
+}
+
+renderArticleCats();
+renderArticles();
+
+/* ════════ SEARCH ════════ */
+const searchInput   = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (!q) { searchResults.classList.remove('open'); return; }
+
+  const fMatches = FISH.filter(f =>
+    f.name.toLowerCase().includes(q) ||
+    f.latin.toLowerCase().includes(q) ||
+    f.family.toLowerCase().includes(q) ||
+    f.baits.some(b => b.toLowerCase().includes(q))
+  );
+  const rMatches = REGIONS.filter(r =>
+    r.name.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q)
+  );
+
+  if (!fMatches.length && !rMatches.length) {
+    searchResults.innerHTML = `<div class="sr-empty">Δεν βρέθηκαν αποτελέσματα για «${searchInput.value}»</div>`;
+  } else {
+    searchResults.innerHTML =
+      fMatches.slice(0,5).map(f => `
+        <div class="sr-item" onclick="openModal('${f.id}'); clearSearch()">
+          <div class="sr-emoji">${f.emoji}</div>
+          <div><div class="sr-name">${f.name}</div><div class="sr-sub">${f.latin} · ${f.family}</div></div>
+          <div class="sr-badge">Ψάρι</div>
+        </div>
+      `).join('') +
+      rMatches.slice(0,4).map(r => `
+        <div class="sr-item" onclick="showRegion('${r.name}'); clearSearch(); scrollToMap()">
+          <div class="sr-emoji">📍</div>
+          <div><div class="sr-name">${r.name}</div><div class="sr-sub">${r.desc} · ${r.fish.length} ψάρια</div></div>
+          <div class="sr-badge">Περιοχή</div>
+        </div>
+      `).join('');
+  }
+  searchResults.classList.add('open');
+});
+
+function clearSearch() {
+  searchInput.value = '';
+  searchResults.classList.remove('open');
+}
+function scrollToMap() {
+  document.getElementById('map-section').scrollIntoView({behavior:'smooth'});
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) searchResults.classList.remove('open');
+});
+searchInput.addEventListener('keydown', e => { if (e.key==='Escape') clearSearch(); });
+
+/* ════════ NAV TABS active on scroll ════════ */
+const sections = ['map-section','fish-section','methods-section','articles-section'];
+const navTabs  = document.querySelectorAll('.nav-tab');
+window.addEventListener('scroll', () => {
+  let current = sections[0];
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && window.scrollY >= el.offsetTop - 120) current = id;
+  });
+  navTabs.forEach(t => {
+    t.classList.toggle('active', t.getAttribute('href') === '#'+current);
+  });
+}, {passive:true});
+
+/* ════════ MODAL ════════ */
+function openModal(id) {
+  const f = FISH.find(x => x.id===id);
+  if (!f) return;
+  document.getElementById('modal-content').innerHTML = `
+    <div class="modal-top">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div class="modal-fish-icon">${f.emoji}</div>
+      <div class="modal-name">${f.name}</div>
+      <div class="modal-latin">${f.latin}</div>
+    </div>
+    <div class="modal-body">
+      ${(f.image || f.wikiImage) ? `<img src="${f.image || f.wikiImage}" alt="${f.name}" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:18px;" loading="lazy" onerror="this.style.display='none'">` : ''}
+      <div class="pills">
+        <div class="pill">📏 Ελάχ. ${f.minLength} εκ.</div>
+        <div class="pill">📍 ${f.depth}</div>
+        <div class="pill">⭐ ${f.difficulty}</div>
+        <div class="pill">🏷️ ${f.family}</div>
+      </div>
+      <div class="m-section-title">Περιγραφή</div>
+      <p class="m-desc">${f.desc}</p>
+      <div class="m-section-title">Εποχή</div>
+      <div class="tags">${f.seasons.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+      <div class="m-section-title">Μέθοδοι Ψαρέματος</div>
+      ${f.methods.map(m=>`<div class="m-method"><h5>🎯 ${m.name}</h5><p>${m.desc}</p></div>`).join('')}
+      <div class="m-section-title">Δολώματα</div>
+      <div class="tags">${f.baits.map(b=>`<span class="tag">🪱 ${b}</span>`).join('')}</div>
+      <div class="m-section-title">Περιοχές</div>
+      <div class="tags">${f.regions.map(r=>`<span class="tag tag-blue">📍 ${r}</span>`).join('')}</div>
+      <div class="m-section-title">Νομική Πληροφόρηση</div>
+      <div class="legal-box">⚖️ ${f.legal}</div>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function handleOverlay(e) {
+  if (e.target === document.getElementById('overlay')) closeModal();
+}
+
+/* ════════ WIKIPEDIA AUTO PHOTOS ════════ */
+async function loadWikipediaImages() {
+  // Batch request: all Latin names in one API call
+  const titles = FISH.map(f => f.latin).join('|');
+  try {
+    const resp = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(titles)}&prop=pageimages&format=json&pithumbsize=600&origin=*`
+    );
+    const data = await resp.json();
+    const pages = data.query.pages;
+
+    // Build a map: latinName → imageUrl
+    const imgMap = {};
+    for (const pid in pages) {
+      const p = pages[pid];
+      if (p.thumbnail) imgMap[p.title] = p.thumbnail.source;
+    }
+
+    // Update each fish card & FISH data
+    FISH.forEach(fish => {
+      // If already has a custom image (set via admin), skip
+      if (fish.image) return;
+
+      const url = imgMap[fish.latin];
+      if (!url) return;
+
+      // Save to fish object so modal also picks it up
+      fish.wikiImage = url;
+
+      // Replace emoji icon in card with real photo
+      const card = document.querySelector(`.fish-card[data-id="${fish.id}"]`);
+      if (!card) return;
+      const icon = card.querySelector('.fish-card-icon');
+      if (!icon) return;
+
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = fish.name;
+      img.loading = 'lazy';
+      img.style.cssText = 'width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block;';
+      img.onerror = () => img.replaceWith(icon); // fallback to emoji
+      icon.replaceWith(img);
+    });
+
+  } catch(e) {
+    // Silently fail — emojis remain as fallback
+    console.log('Wikipedia images unavailable:', e.message);
+  }
+}
+
+// Patch openModal to also use wikiImage
+const _origOpenModal = openModal;
+openModal = function(id) {
+  const f = FISH.find(x => x.id === id);
+  if (f && !f.image && f.wikiImage) f.image = f.wikiImage;
+  _origOpenModal(id);
+  if (f) f.image = f.image === f.wikiImage ? '' : f.image; // reset so admin override stays clean
+};
+
+// Load images after page renders
+loadWikipediaImages();
+
+/* ════════ HERO STAT COUNT-UP ════════ */
+(function animateStats() {
+  const nums = document.querySelectorAll('.stat-num[data-count]');
+  let done = false;
+  function run() {
+    if (done) return;
+    const heroBottom = document.querySelector('.hero').getBoundingClientRect().bottom;
+    if (heroBottom < 0) return;
+    done = true;
+    nums.forEach(el => {
+      const target = parseInt(el.dataset.count);
+      const suffix = el.textContent.includes('+') ? '+' : '';
+      let cur = 0;
+      const step = Math.max(1, Math.ceil(target / 30));
+      const timer = setInterval(() => {
+        cur += step;
+        if (cur >= target) { cur = target; clearInterval(timer); }
+        el.textContent = cur + suffix;
+      }, 28);
+    });
+  }
+  run();
+  window.addEventListener('scroll', run, { passive: true, once: false });
+})();
+</script>
+</body>
+</html>
